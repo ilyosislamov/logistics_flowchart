@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Flowchart Editor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        #canvas-container {
+            position: relative;
+            width: 100vw;
+            height: 80vh;
+            background-color: #f0f0f0;
+            border: 2px solid #ccc;
+        }
+
+        .node {
+            position: absolute;
+            width: 150px;
+            height: 100px;
+            background-color: #1E90FF;
+            border-radius: 5px;
+            color: white;
+            text-align: center;
+            line-height: 100px;
+            cursor: move;
+            box-sizing: border-box;
+        }
+
+        .connection {
+            position: absolute;
+            width: 2px;
+            background-color: black;
+            pointer-events: none;
+        }
+
+        .zoom-controls {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .zoom-controls button {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        .button-container {
+            position: fixed;
+            top: 100px;
+            left: 10px;
+            z-index: 10;
+        }
+
+        .button-container button {
+            margin: 5px 0;
+        }
+
+        #overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+
+        #overlay-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            width: 300px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Flowchart editor container -->
+    <div id="canvas-container"></div>
+
+    <!-- Overlay for adding/editing nodes -->
+    <div id="overlay">
+        <div id="overlay-content">
+            <label for="nodeLabel">Node Label:</label>
+            <input type="text" id="nodeLabel" />
+            <button id="saveNodeBtn">Save</button>
+            <button id="closeOverlayBtn">Close</button>
+        </div>
+    </div>
+
+    <!-- Zoom controls -->
+    <div class="zoom-controls">
+        <button id="zoomInBtn">Zoom In</button>
+        <button id="zoomOutBtn">Zoom Out</button>
+        <button id="zoomResetBtn">Reset Zoom</button>
+        <span id="zoomLevelDisplay">Zoom: 100%</span>
+    </div>
+
+    <!-- Buttons for adding and managing nodes -->
+    <div class="button-container">
+        <button id="createNodeBtn">Create Node</button>
+        <button id="saveBtn">Save</button>
+        <button id="loadBtn">Load</button>
+        <button id="exportPngBtn">Export PNG</button>
+        <button id="exportPdfBtn">Export PDF</button>
+    </div>
+
+    <script>
+        let nodeIdCounter = 0;
+        let connectionIdCounter = 0;
+        const nodes = [];
+        const connections = [];
+
+        // DOM Elements
+        const canvasContainer = document.getElementById('canvas-container');
+        const overlay = document.getElementById('overlay');
+        const nodeLabelInput = document.getElementById('nodeLabel');
+        const saveNodeBtn = document.getElementById('saveNodeBtn');
+        const closeOverlayBtn = document.getElementById('closeOverlayBtn');
+        const createNodeBtn = document.getElementById('createNodeBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const loadBtn = document.getElementById('loadBtn');
+        const exportPngBtn = document.getElementById('exportPngBtn');
+        const exportPdfBtn = document.getElementById('exportPdfBtn');
+        const zoomInBtn = document.getElementById('zoomInBtn');
+        const zoomOutBtn = document.getElementById('zoomOutBtn');
+        const zoomResetBtn = document.getElementById('zoomResetBtn');
+        const zoomLevelDisplay = document.getElementById('zoomLevelDisplay');
+
+        // State management
+        let zoomLevel = 1;
+
+        // Create Node
+        function createNode(x, y, label) {
+            const nodeId = `node-${nodeIdCounter++}`;
+            const nodeElement = document.createElement('div');
+            nodeElement.className = 'node';
+            nodeElement.id = nodeId;
+            nodeElement.style.left = `${x}px`;
+            nodeElement.style.top = `${y}px`;
+            nodeElement.innerText = label;
+
+            nodeElement.addEventListener('mousedown', (e) => {
+                const offsetX = e.clientX - nodeElement.offsetLeft;
+                const offsetY = e.clientY - nodeElement.offsetTop;
+
+                const onMouseMove = (moveEvent) => {
+                    nodeElement.style.left = `${moveEvent.clientX - offsetX}px`;
+                    nodeElement.style.top = `${moveEvent.clientY - offsetY}px`;
+                };
+
+                const onMouseUp = () => {
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+
+            canvasContainer.appendChild(nodeElement);
+            nodes.push({ id: nodeId, x, y, label });
+        }
+
+        // Event Listeners
+        createNodeBtn.addEventListener('click', () => {
+            console.log('Create Node button clicked!');
+            overlay.style.display = 'flex';  // Ensure this is being triggered correctly
+        });
+
+        saveNodeBtn.addEventListener('click', () => {
+            const label = nodeLabelInput.value;
+            if (label) {
+                createNode(100, 100, label); // Default position at (100, 100)
+                overlay.style.display = 'none'; // Hide overlay after saving
+                nodeLabelInput.value = ''; // Clear the input field
+            }
+        });
+
+        closeOverlayBtn.addEventListener('click', () => {
+            overlay.style.display = 'none'; // Close the overlay when clicking Close
+        });
+
+        zoomInBtn.addEventListener('click', () => {
+            zoomLevel += 0.1;
+            updateZoom();
+        });
+
+        zoomOutBtn.addEventListener('click', () => {
+            zoomLevel -= 0.1;
+            updateZoom();
+        });
+
+        zoomResetBtn.addEventListener('click', () => {
+            zoomLevel = 1;
+            updateZoom();
+        });
+
+        function updateZoom() {
+            canvasContainer.style.transform = `scale(${zoomLevel})`;
+            zoomLevelDisplay.textContent = `Zoom: ${Math.round(zoomLevel * 100)}%`;
+        }
+    </script>
+
+</body>
+</html>
