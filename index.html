@@ -1,217 +1,311 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Flowchart Editor</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-        }
-
-        #canvas-container {
-            position: relative;
-            width: 100vw;
-            height: 80vh;
-            background-color: #f0f0f0;
-            border: 2px solid #ccc;
-        }
-
-        .node {
-            position: absolute;
-            width: 150px;
-            height: 100px;
-            background-color: #1E90FF;
-            border-radius: 5px;
-            color: white;
-            text-align: center;
-            line-height: 100px;
-            cursor: move;
-            box-sizing: border-box;
-        }
-
-        .connection {
-            position: absolute;
-            width: 2px;
-            background-color: black;
-            pointer-events: none;
-        }
-
-        .zoom-controls {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            display: flex;
-            gap: 10px;
-            z-index: 10;
-        }
-
-        .zoom-controls button {
-            padding: 5px 10px;
-            cursor: pointer;
-        }
-
-        .button-container {
-            position: fixed;
-            top: 100px;
-            left: 10px;
-            z-index: 10;
-        }
-
-        .button-container button {
-            margin: 5px 0;
-        }
-
-        #overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0, 0, 0, 0.5);
-            justify-content: center;
-            align-items: center;
-        }
-
-        #overlay-content {
-            background-color: white;
-            padding: 20px;
-            border-radius: 5px;
-            width: 300px;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Logistics Flowchart Builder</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      text-align: center; 
+      background: #f4f4f4; 
+      margin: 0; 
+      padding: 20px; 
+    }
+    h2 { color: #333; }
+    .controls { margin-bottom: 20px; }
+    .controls button, .controls input, .controls select {
+      padding: 10px;
+      margin: 5px;
+      border: none;
+      border-radius: 5px;
+      transition: background 0.3s;
+    }
+    .controls button {
+      background: #007bff;
+      color: white;
+      cursor: pointer;
+    }
+    .controls button:hover { background: #0056b3; }
+    .controls input, .controls select {
+      border: 2px solid #007bff;
+    }
+    #flowchart-container {
+      position: relative;
+      width: 90vw;
+      height: 70vh;
+      background: white;
+      border: 2px dashed #007bff;
+      margin: 20px auto;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    .node {
+      position: absolute;
+      min-width: 100px;
+      min-height: 50px;
+      background: #fff;
+      border: 2px solid #007bff;
+      cursor: grab;
+      box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.2);
+      user-select: none;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Rectangle uses default styling */
+    .node.rectangular { }
+    /* Circle: enforce circular shape via border-radius */
+    .node.circle {
+      border-radius: 50%;
+    }
+    /* Square: enforce equal dimensions */
+    .node.square { }
+    /* Editable content area */
+    .node-content {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      padding: 5px;
+      outline: none;
+      word-wrap: break-word;
+      cursor: text;
+    }
+    .node .remove {
+      cursor: pointer;
+      color: red;
+      font-weight: bold;
+      padding: 2px 5px;
+      background: #fff;
+      border-left: 1px solid #007bff;
+    }
+    .selected {
+      border: 2px dashed red;
+    }
+    .line {
+      position: absolute;
+      height: 2px;
+      background: #007bff;
+      transform-origin: top left;
+    }
+    /* Arrowhead using pseudo-element */
+    .line::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: 0;
+      transform: translate(50%, -50%);
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+      border-left: 10px solid #007bff;
+    }
+  </style>
 </head>
 <body>
+  <h2>Logistics Flowchart Builder</h2>
+  <div class="controls">
+    <input type="text" id="nodeLabel" placeholder="Enter node label" />
+    <select id="nodeShape">
+      <option value="rectangular">Rectangle</option>
+      <option value="circle">Circle</option>
+      <option value="square">Square</option>
+    </select>
+    <button onclick="addNode()">Add Node</button>
+    <button onclick="toggleConnectMode()" id="connectBtn">Connect Nodes</button>
+    <button onclick="toggleEraserMode()" id="eraserBtn">Eraser Mode</button>
+    <button onclick="exportFlowchart()">Export as Image</button>
+  </div>
+  <div id="flowchart-container"></div>
 
-    <!-- Flowchart editor container -->
-    <div id="canvas-container"></div>
+  <script>
+    let nodeId = 0;
+    let selectedNode = null;
+    let clickTimer = null;
+    let connectMode = false;
+    let eraserMode = false;
 
-    <!-- Overlay for adding/editing nodes -->
-    <div id="overlay">
-        <div id="overlay-content">
-            <label for="nodeLabel">Node Label:</label>
-            <input type="text" id="nodeLabel" />
-            <button id="saveNodeBtn">Save</button>
-            <button id="closeOverlayBtn">Close</button>
-        </div>
-    </div>
+    function addNode() {
+      const label = document.getElementById('nodeLabel').value.trim();
+      if (!label) {
+        alert('Please enter a label for the node.');
+        return;
+      }
+      const shape = document.getElementById('nodeShape').value;
+      const container = document.getElementById('flowchart-container');
+      const node = document.createElement('div');
+      node.classList.add('node', shape);
+      node.setAttribute('id', `node-${nodeId++}`);
 
-    <!-- Zoom controls -->
-    <div class="zoom-controls">
-        <button id="zoomInBtn">Zoom In</button>
-        <button id="zoomOutBtn">Zoom Out</button>
-        <button id="zoomResetBtn">Reset Zoom</button>
-        <span id="zoomLevelDisplay">Zoom: 100%</span>
-    </div>
+      // Create content area for text editing
+      const contentDiv = document.createElement('div');
+      contentDiv.classList.add('node-content');
+      contentDiv.contentEditable = "true";
+      contentDiv.innerText = label;
+      
+      // Create remove button
+      const removeSpan = document.createElement('span');
+      removeSpan.innerHTML = '&times;';
+      removeSpan.classList.add('remove');
+      removeSpan.onclick = (e) => {
+        e.stopPropagation();
+        removeNode(node);
+      };
 
-    <!-- Buttons for adding and managing nodes -->
-    <div class="button-container">
-        <button id="createNodeBtn">Create Node</button>
-        <button id="saveBtn">Save</button>
-        <button id="loadBtn">Load</button>
-        <button id="exportPngBtn">Export PNG</button>
-        <button id="exportPdfBtn">Export PDF</button>
-    </div>
+      node.appendChild(contentDiv);
+      node.appendChild(removeSpan);
+      
+      node.style.left = `${Math.random() * 70 + 10}%`;
+      node.style.top = `${Math.random() * 50 + 10}%`;
+      
+      node.addEventListener('click', (e) => {
+        if (clickTimer) clearTimeout(clickTimer);
+        clickTimer = setTimeout(() => {
+          if (eraserMode) {
+            removeNode(node);
+          } else if (connectMode) {
+            handleConnectionClick(node);
+          }
+        }, 150);
+      });
 
-    <script>
-        let nodeIdCounter = 0;
-        let connectionIdCounter = 0;
-        const nodes = [];
-        const connections = [];
+      container.appendChild(node);
+      makeInteractive(node);
+    }
 
-        // DOM Elements
-        const canvasContainer = document.getElementById('canvas-container');
-        const overlay = document.getElementById('overlay');
-        const nodeLabelInput = document.getElementById('nodeLabel');
-        const saveNodeBtn = document.getElementById('saveNodeBtn');
-        const closeOverlayBtn = document.getElementById('closeOverlayBtn');
-        const createNodeBtn = document.getElementById('createNodeBtn');
-        const saveBtn = document.getElementById('saveBtn');
-        const loadBtn = document.getElementById('loadBtn');
-        const exportPngBtn = document.getElementById('exportPngBtn');
-        const exportPdfBtn = document.getElementById('exportPdfBtn');
-        const zoomInBtn = document.getElementById('zoomInBtn');
-        const zoomOutBtn = document.getElementById('zoomOutBtn');
-        const zoomResetBtn = document.getElementById('zoomResetBtn');
-        const zoomLevelDisplay = document.getElementById('zoomLevelDisplay');
+    function removeNode(node) {
+      node.remove();
+      updateLines();
+    }
 
-        // State management
-        let zoomLevel = 1;
-
-        // Create Node
-        function createNode(x, y, label) {
-            const nodeId = `node-${nodeIdCounter++}`;
-            const nodeElement = document.createElement('div');
-            nodeElement.className = 'node';
-            nodeElement.id = nodeId;
-            nodeElement.style.left = `${x}px`;
-            nodeElement.style.top = `${y}px`;
-            nodeElement.innerText = label;
-
-            nodeElement.addEventListener('mousedown', (e) => {
-                const offsetX = e.clientX - nodeElement.offsetLeft;
-                const offsetY = e.clientY - nodeElement.offsetTop;
-
-                const onMouseMove = (moveEvent) => {
-                    nodeElement.style.left = `${moveEvent.clientX - offsetX}px`;
-                    nodeElement.style.top = `${moveEvent.clientY - offsetY}px`;
-                };
-
-                const onMouseUp = () => {
-                    document.removeEventListener('mousemove', onMouseMove);
-                    document.removeEventListener('mouseup', onMouseUp);
-                };
-
-                document.addEventListener('mousemove', onMouseMove);
-                document.addEventListener('mouseup', onMouseUp);
-            });
-
-            canvasContainer.appendChild(nodeElement);
-            nodes.push({ id: nodeId, x, y, label });
-        }
-
-        // Event Listeners
-        createNodeBtn.addEventListener('click', () => {
-            console.log('Create Node button clicked!');
-            overlay.style.display = 'flex';  // Ensure this is being triggered correctly
-        });
-
-        saveNodeBtn.addEventListener('click', () => {
-            const label = nodeLabelInput.value;
-            if (label) {
-                createNode(100, 100, label); // Default position at (100, 100)
-                overlay.style.display = 'none'; // Hide overlay after saving
-                nodeLabelInput.value = ''; // Clear the input field
+    function makeInteractive(el) {
+      interact(el)
+        .draggable({
+          inertia: true,
+          modifiers: [
+            interact.modifiers.restrictRect({ restriction: 'parent', endOnly: true })
+          ],
+          listeners: {
+            move(event) {
+              const target = event.target;
+              const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+              const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+              target.style.transform = `translate(${x}px, ${y}px)`;
+              target.setAttribute('data-x', x);
+              target.setAttribute('data-y', y);
+              updateLines();
             }
+          }
+        })
+        .resizable({
+          edges: { left: true, right: true, bottom: true, top: true },
+          modifiers: [
+            interact.modifiers.restrictSize({ min: { width: 50, height: 30 } })
+          ],
+          listeners: {
+            move(event) {
+              const target = event.target;
+              let newWidth = event.rect.width;
+              let newHeight = event.rect.height;
+              if (target.classList.contains('circle') || target.classList.contains('square')) {
+                const size = Math.max(newWidth, newHeight);
+                newWidth = newHeight = size;
+              }
+              target.style.width = newWidth + 'px';
+              target.style.height = newHeight + 'px';
+              let x = (parseFloat(target.getAttribute('data-x')) || 0) + event.deltaRect.left;
+              let y = (parseFloat(target.getAttribute('data-y')) || 0) + event.deltaRect.top;
+              target.style.transform = `translate(${x}px, ${y}px)`;
+              target.setAttribute('data-x', x);
+              target.setAttribute('data-y', y);
+              updateLines();
+            }
+          }
         });
+    }
 
-        closeOverlayBtn.addEventListener('click', () => {
-            overlay.style.display = 'none'; // Close the overlay when clicking Close
-        });
+    function toggleConnectMode() {
+      connectMode = !connectMode;
+      if (connectMode) {
+        eraserMode = false;
+        document.getElementById('eraserBtn').textContent = 'Eraser Mode';
+      }
+      selectedNode = null;
+      document.getElementById('connectBtn').textContent = connectMode ? 'Cancel Connect' : 'Connect Nodes';
+      alert(connectMode ? 'Connect mode enabled: Click on two nodes to connect them.' : 'Connect mode disabled.');
+    }
 
-        zoomInBtn.addEventListener('click', () => {
-            zoomLevel += 0.1;
-            updateZoom();
-        });
+    function toggleEraserMode() {
+      eraserMode = !eraserMode;
+      if (eraserMode) {
+        connectMode = false;
+        document.getElementById('connectBtn').textContent = 'Connect Nodes';
+      }
+      selectedNode = null;
+      document.getElementById('eraserBtn').textContent = eraserMode ? 'Cancel Eraser' : 'Eraser Mode';
+      alert(eraserMode ? 'Eraser mode enabled: Click on any node or line to remove it.' : 'Eraser mode disabled.');
+    }
 
-        zoomOutBtn.addEventListener('click', () => {
-            zoomLevel -= 0.1;
-            updateZoom();
-        });
-
-        zoomResetBtn.addEventListener('click', () => {
-            zoomLevel = 1;
-            updateZoom();
-        });
-
-        function updateZoom() {
-            canvasContainer.style.transform = `scale(${zoomLevel})`;
-            zoomLevelDisplay.textContent = `Zoom: ${Math.round(zoomLevel * 100)}%`;
+    function handleConnectionClick(node) {
+      if (!selectedNode) {
+        selectedNode = node;
+        node.classList.add('selected');
+      } else {
+        if (selectedNode.id !== node.id) {
+          createLine(selectedNode, node);
         }
-    </script>
+        selectedNode.classList.remove('selected');
+        selectedNode = null;
+      }
+    }
 
+    function createLine(startNode, endNode) {
+      const container = document.getElementById('flowchart-container');
+      const line = document.createElement('div');
+      line.classList.add('line');
+      line.setAttribute('data-start', startNode.id);
+      line.setAttribute('data-end', endNode.id);
+      line.addEventListener('click', (e) => {
+        if (eraserMode) {
+          line.remove();
+          e.stopPropagation();
+        }
+      });
+      container.appendChild(line);
+      updateLines();
+    }
+
+    function updateLines() {
+      document.querySelectorAll('.line').forEach(line => {
+        const startNode = document.getElementById(line.getAttribute('data-start'));
+        const endNode = document.getElementById(line.getAttribute('data-end'));
+        if (startNode && endNode) {
+          const containerRect = document.getElementById('flowchart-container').getBoundingClientRect();
+          const startRect = startNode.getBoundingClientRect();
+          const endRect = endNode.getBoundingClientRect();
+          const x1 = startRect.left + startRect.width / 2 - containerRect.left;
+          const y1 = startRect.top + startRect.height / 2 - containerRect.top;
+          const x2 = endRect.left + endRect.width / 2 - containerRect.left;
+          const y2 = endRect.top + endRect.height / 2 - containerRect.top;
+          const length = Math.hypot(x2 - x1, y2 - y1);
+          const angle = Math.atan2(y2 - y1, x2 - x1) * (180 / Math.PI);
+          line.style.width = `${length}px`;
+          line.style.transform = `translate(${x1}px, ${y1}px) rotate(${angle}deg)`;
+        }
+      });
+    }
+
+    function exportFlowchart() {
+      html2canvas(document.getElementById('flowchart-container')).then(canvas => {
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL();
+        link.download = 'flowchart.png';
+        link.click();
+      });
+    }
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </body>
 </html>
